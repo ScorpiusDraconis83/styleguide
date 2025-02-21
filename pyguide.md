@@ -405,13 +405,16 @@ Exceptions must follow certain conditions:
 
 -   Make use of built-in exception classes when it makes sense. For example,
     raise a `ValueError` to indicate a programming mistake like a violated
-    precondition (such as if you were passed a negative number but required a
-    positive one). Do not use `assert` statements for validating argument values
-    of a public API. `assert` is used to ensure internal correctness or
-    to verify expectations in
-    [pytest](https://pytest.org) based tests, not to enforce correct usage nor
-    to indicate that some unexpected event occurred. If an exception is desired
-    in the latter cases, use a raise statement. For example:
+    precondition, such as may happen when validating function arguments.
+
+-   Do not use `assert` statements in place of conditionals or validating
+    preconditions. They must not be critical to the application logic. A litmus
+    test would be that the `assert` could be removed without breaking the code.
+    `assert` conditionals are
+    [not guaranteed](https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement)
+    to be evaluated. For [pytest](https://pytest.org) based tests, `assert` is
+    okay and expected to verify expectations. For
+    example:
 
     
     ```python
@@ -437,6 +440,7 @@ Exceptions must follow certain conditions:
         if port is None:
           raise ConnectionError(
               f'Could not connect to service on port {minimum} or higher.')
+        # The code does not depend on the result of this assert.
         assert port >= minimum, (
             f'Unexpected port {port} when minimum was {minimum}.')
         return port
@@ -454,8 +458,10 @@ Exceptions must follow certain conditions:
           The new minimum port.
         """
         assert minimum >= 1024, 'Minimum port must be at least 1024.'
+        # The following code depends on the previous assert.
         port = self._find_next_open_port(minimum)
         assert port is not None
+        # The type checking of the return statement relies on the assert.
         return port
     ```
 
@@ -2093,16 +2099,18 @@ aptly described using a one-line docstring.
 :   Describe the semantics of the return value, including any type information
     that the type annotation does not provide. If the function only returns
     None, this section is not required. It may also be omitted if the docstring
-    starts with Returns or Yields (e.g. `"""Returns row from Bigtable as a tuple
-    of strings."""`) and the opening sentence is sufficient to describe the
-    return value. Do not imitate older 'NumPy style'
+    starts with "Return", "Returns", "Yield", or "Yields" (e.g. `"""Returns row
+    from Bigtable as a tuple of strings."""`) *and* the opening sentence is
+    sufficient to describe the return value. Do not imitate older 'NumPy style'
     ([example](https://numpy.org/doc/1.24/reference/generated/numpy.linalg.qr.html)),
     which frequently documented a tuple return value as if it were multiple
     return values with individual names (never mentioning the tuple). Instead,
     describe such a return value as: "Returns: A tuple (mat_a, mat_b), where
     mat_a is ..., and ...". The auxiliary names in the docstring need not
     necessarily correspond to any internal names used in the function body (as
-    those are not part of the API).
+    those are not part of the API). If the function uses `yield` (is a
+    generator), the `Yields:` section should document the object returned by
+    `next()`, instead of the generator object itself that the call evaluates to.
 
 <a id="doc-function-raises"></a>
 [*Raises:*](#doc-function-raises)
@@ -2238,8 +2246,8 @@ class Child(Parent):
 #### 3.8.4 Classes 
 
 Classes should have a docstring below the class definition describing the class.
-If your class has public attributes, they should be documented here in an
-`Attributes` section and follow the same formatting as a
+Public attributes, excluding [properties](#properties), should be documented
+here in an `Attributes` section and follow the same formatting as a
 [function's `Args`](#doc-function-args) section.
 
 ```python
@@ -2263,8 +2271,9 @@ class SampleClass:
         self.likes_spam = likes_spam
         self.eggs = 0
 
-    def public_method(self):
-        """Performs operation blah."""
+    @property
+    def butter_sticks(self) -> int:
+        """The number of butter sticks we have."""
 ```
 
 All class docstrings should start with a one-line summary that describes what
@@ -2539,7 +2548,7 @@ messages shown to the user) should follow three guidelines:
 ```python
   Yes:
   if not 0 <= p <= 1:
-    raise ValueError(f'Not a probability: {p!r}')
+    raise ValueError(f'Not a probability: {p=}')
 
   try:
     os.rmdir(workdir)
@@ -2551,7 +2560,7 @@ messages shown to the user) should follow three guidelines:
 ```python
   No:
   if p < 0 or p > 1:  # PROBLEM: also false for float('nan')!
-    raise ValueError(f'Not a probability: {p!r}')
+    raise ValueError(f'Not a probability: {p=}')
 
   try:
     os.rmdir(workdir)
@@ -3114,13 +3123,20 @@ the function into smaller and more manageable pieces.
 
 *   Familiarize yourself with [PEP-484](https://peps.python.org/pep-0484/).
 
-*   In methods, only annotate `self`, or `cls` if it is necessary for proper
-    type information. e.g.,
+*   Annotating `self` or `cls` is generally not necessary.
+    [`Self`](https://docs.python.org/3/library/typing.html#typing.Self) can be
+    used if it is necessary for proper type information, e.g.
 
     ```python
-    @classmethod
-    def create(cls: Type[_T]) -> _T:
-      return cls()
+    from typing import Self
+
+    class BaseClass:
+      @classmethod
+      def create(cls) -> Self:
+        ...
+
+      def difference(self, other: Self) -> float:
+        ...
     ```
 
 *   Similarly, don't feel compelled to annotate the return value of `__init__`
