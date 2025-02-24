@@ -405,13 +405,16 @@ Exceptions must follow certain conditions:
 
 -   Make use of built-in exception classes when it makes sense. For example,
     raise a `ValueError` to indicate a programming mistake like a violated
-    precondition (such as if you were passed a negative number but required a
-    positive one). Do not use `assert` statements for validating argument values
-    of a public API. `assert` is used to ensure internal correctness or
-    to verify expectations in
-    [pytest](https://pytest.org) based tests, not to enforce correct usage nor
-    to indicate that some unexpected event occurred. If an exception is desired
-    in the latter cases, use a raise statement. For example:
+    precondition, such as may happen when validating function arguments.
+
+-   Do not use `assert` statements in place of conditionals or validating
+    preconditions. They must not be critical to the application logic. A litmus
+    test would be that the `assert` could be removed without breaking the code.
+    `assert` conditionals are
+    [not guaranteed](https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement)
+    to be evaluated. For [pytest](https://pytest.org) based tests, `assert` is
+    okay and expected to verify expectations. For
+    example:
 
     
     ```python
@@ -437,6 +440,7 @@ Exceptions must follow certain conditions:
         if port is None:
           raise ConnectionError(
               f'Could not connect to service on port {minimum} or higher.')
+        # The code does not depend on the result of this assert.
         assert port >= minimum, (
             f'Unexpected port {port} when minimum was {minimum}.')
         return port
@@ -454,8 +458,10 @@ Exceptions must follow certain conditions:
           The new minimum port.
         """
         assert minimum >= 1024, 'Minimum port must be at least 1024.'
+        # The following code depends on the previous assert.
         port = self._find_next_open_port(minimum)
         assert port is not None
+        # The type checking of the return statement relies on the assert.
         return port
     ```
 
@@ -1293,7 +1299,7 @@ pretty much impossible to recover from.
 #### 2.17.4 Decision 
 
 Use decorators judiciously when there is a clear advantage. Decorators should
-follow the same import and naming guidelines as functions. Decorator pydoc
+follow the same import and naming guidelines as functions. A decorator docstring
 should clearly state that the function is a decorator. Write unit tests for
 decorators.
 
@@ -1462,14 +1468,12 @@ Use other `from __future__` import statements as you see fit.
 <a id="typed-code"></a>
 ### 2.21 Type Annotated Code 
 
-You can annotate Python code with type hints according to
-[PEP-484](https://peps.python.org/pep-0484/), and type-check the code at build
-time with a type checking tool like [pytype](https://github.com/google/pytype).
-
-Type annotations can be in the source or in a
-[stub pyi file](https://peps.python.org/pep-0484/#stub-files). Whenever
-possible, annotations should be in the source. Use pyi files for third-party or
-extension modules.
+You can annotate Python code with
+[type hints](https://docs.python.org/3/library/typing.html). Type-check the code
+at build time with a type checking tool like [pytype](https://github.com/google/pytype).
+In most cases, when feasible, type annotations are in source files. For
+third-party or extension modules, annotations can be in
+[stub `.pyi` files](https://peps.python.org/pep-0484/#stub-files).
 
 
 <a id="s2.21.1-definition"></a>
@@ -1485,8 +1489,7 @@ return values:
 def func(a: int) -> list[int]:
 ```
 
-You can also declare the type of a variable using similar
-[PEP-526](https://peps.python.org/pep-0526/) syntax:
+You can also declare the type of a variable using similar syntax:
 
 ```python
 a: SomeType = some_func()
@@ -1660,6 +1663,9 @@ No:  # See details at
 
 Make note of the indentation of the elements in the line continuation examples
 above; see the [indentation](#s3.4-indentation) section for explanation.
+
+[Docstring](#docstrings) summary lines must remain within the 80 character
+limit.
 
 In all other cases where a line exceeds 80 characters, and the
 [Black](https://github.com/psf/black) or [Pyink](https://github.com/google/pyink)
@@ -2006,7 +2012,7 @@ examples.
 Typical usage example:
 
   foo = ClassFoo()
-  bar = foo.FunctionBar()
+  bar = foo.function_bar()
 """
 ```
 
@@ -2093,16 +2099,18 @@ aptly described using a one-line docstring.
 :   Describe the semantics of the return value, including any type information
     that the type annotation does not provide. If the function only returns
     None, this section is not required. It may also be omitted if the docstring
-    starts with Returns or Yields (e.g. `"""Returns row from Bigtable as a tuple
-    of strings."""`) and the opening sentence is sufficient to describe the
-    return value. Do not imitate older 'NumPy style'
+    starts with "Return", "Returns", "Yield", or "Yields" (e.g. `"""Returns row
+    from Bigtable as a tuple of strings."""`) *and* the opening sentence is
+    sufficient to describe the return value. Do not imitate older 'NumPy style'
     ([example](https://numpy.org/doc/1.24/reference/generated/numpy.linalg.qr.html)),
     which frequently documented a tuple return value as if it were multiple
     return values with individual names (never mentioning the tuple). Instead,
     describe such a return value as: "Returns: A tuple (mat_a, mat_b), where
     mat_a is ..., and ...". The auxiliary names in the docstring need not
     necessarily correspond to any internal names used in the function body (as
-    those are not part of the API).
+    those are not part of the API). If the function uses `yield` (is a
+    generator), the `Yields:` section should document the object returned by
+    `next()`, instead of the generator object itself that the call evaluates to.
 
 <a id="doc-function-raises"></a>
 [*Raises:*](#doc-function-raises)
@@ -2238,8 +2246,8 @@ class Child(Parent):
 #### 3.8.4 Classes 
 
 Classes should have a docstring below the class definition describing the class.
-If your class has public attributes, they should be documented here in an
-`Attributes` section and follow the same formatting as a
+Public attributes, excluding [properties](#properties), should be documented
+here in an `Attributes` section and follow the same formatting as a
 [function's `Args`](#doc-function-args) section.
 
 ```python
@@ -2263,8 +2271,9 @@ class SampleClass:
         self.likes_spam = likes_spam
         self.eggs = 0
 
-    def public_method(self):
-        """Performs operation blah."""
+    @property
+    def butter_sticks(self) -> int:
+        """The number of butter sticks we have."""
 ```
 
 All class docstrings should start with a one-line summary that describes what
@@ -2539,7 +2548,7 @@ messages shown to the user) should follow three guidelines:
 ```python
   Yes:
   if not 0 <= p <= 1:
-    raise ValueError(f'Not a probability: {p!r}')
+    raise ValueError(f'Not a probability: {p=}')
 
   try:
     os.rmdir(workdir)
@@ -2551,7 +2560,7 @@ messages shown to the user) should follow three guidelines:
 ```python
   No:
   if p < 0 or p > 1:  # PROBLEM: also false for float('nan')!
-    raise ValueError(f'Not a probability: {p!r}')
+    raise ValueError(f'Not a probability: {p=}')
 
   try:
     os.rmdir(workdir)
@@ -2859,9 +2868,11 @@ change in complexity.
 `send_acronym_via_https`.
 
 
-Function names, variable names, and filenames should be descriptive; avoid
-abbreviation. In particular, do not use abbreviations that are ambiguous or
-unfamiliar to readers outside your project, and do not abbreviate by deleting
+Names should be descriptive. This includes functions, classes, variables,
+attributes, files and any other type of named entities.
+
+Avoid abbreviation. In particular, do not use abbreviations that are ambiguous
+or unfamiliar to readers outside your project, and do not abbreviate by deleting
 letters within a word.
 
 Always use a `.py` filename extension. Never use dashes.
@@ -2879,6 +2890,8 @@ Always use a `.py` filename extension. Never use dashes.
     -   `f` as a file handle in `with` statements
     -   private [type variables](#typing-type-var) with no constraints (e.g.
         `_T = TypeVar("_T")`, `_P = ParamSpec("_P")`)
+    -   names that match established notation in a reference paper or algorithm
+        (see [Mathematical Notation](#math-notation))
 
     Please be mindful not to abuse single-character naming. Generally speaking,
     descriptiveness should be proportional to the name's scope of visibility.
@@ -3030,13 +3043,20 @@ containing `exec "$0.py" "$@"`.
 <a id="math-notation"></a>
 #### 3.16.5 Mathematical Notation 
 
-For mathematically heavy code, short variable names that would otherwise violate
+For mathematically-heavy code, short variable names that would otherwise violate
 the style guide are preferred when they match established notation in a
-reference paper or algorithm. When doing so, reference the source of all naming
-conventions in a comment or docstring or, if the source is not accessible,
-clearly document the naming conventions. Prefer PEP8-compliant
-`descriptive_names` for public APIs, which are much more likely to be
-encountered out of context.
+reference paper or algorithm.
+
+When using names based on established notation:
+
+1.  Cite the source of all naming conventions, preferably with a hyperlink to
+    academic resource itself, in a comment or docstring. If the source is not
+    accessible, clearly document the naming conventions.
+2.  Prefer PEP8-compliant `descriptive_names` for public APIs, which are much
+    more likely to be encountered out of context.
+3.  Use a narrowly-scoped `pylint: disable=invalid-name` directive to silence
+    warnings. For just a few variables, use the directive as an endline comment
+    for each one; for more, apply the directive at the beginning of a block.
 
 <a id="main"></a>
 ### 3.17 Main 
@@ -3112,15 +3132,23 @@ the function into smaller and more manageable pieces.
 <a id="typing-general"></a>
 #### 3.19.1 General Rules 
 
-*   Familiarize yourself with [PEP-484](https://peps.python.org/pep-0484/).
+*   Familiarize yourself with
+    [type hints](https://docs.python.org/3/library/typing.html).
 
-*   In methods, only annotate `self`, or `cls` if it is necessary for proper
-    type information. e.g.,
+*   Annotating `self` or `cls` is generally not necessary.
+    [`Self`](https://docs.python.org/3/library/typing.html#typing.Self) can be
+    used if it is necessary for proper type information, e.g.
 
     ```python
-    @classmethod
-    def create(cls: Type[_T]) -> _T:
-      return cls()
+    from typing import Self
+
+    class BaseClass:
+      @classmethod
+      def create(cls) -> Self:
+        ...
+
+      def difference(self, other: Self) -> float:
+        ...
     ```
 
 *   Similarly, don't feel compelled to annotate the return value of `__init__`
@@ -3309,9 +3337,9 @@ purposes, `None` is an alias for `NoneType`. If an argument can be `None`, it
 has to be declared! You can use `|` union type expressions (recommended in new
 Python 3.10+ code), or the older `Optional` and `Union` syntaxes.
 
-Use explicit `X | None` instead of implicit. Earlier versions of PEP 484 allowed
-`a: str = None` to be interpreted as `a: str | None = None`, but that is no
-longer the preferred behavior.
+Use explicit `X | None` instead of implicit. Earlier versions of type checkers
+allowed `a: str = None` to be interpreted as `a: str | None = None`, but that is
+no longer the preferred behavior.
 
 ```python
 Yes:
@@ -3419,8 +3447,8 @@ c: tuple[int, str, float] = (1, "2", 3.5)
 #### 3.19.10 Type variables 
 
 The Python type system has
-[generics](https://peps.python.org/pep-0484/#generics). A type variable, such as
-`TypeVar` and `ParamSpec`, is a common way to use them.
+[generics](https://docs.python.org/3/library/typing.html#generics). A type
+variable, such as `TypeVar` and `ParamSpec`, is a common way to use them.
 
 Example:
 
@@ -3532,12 +3560,25 @@ type and an existing name in a module, import it using `import x as y`.
 from typing import Any as AnyType
 ```
 
-Prefer to use built-in types as annotations where available. Python supports
-type annotations using parametric container types via
-[PEP-585](https://peps.python.org/pep-0585/), introduced in Python 3.9.
+When annotating function signatures, prefer abstract container types like
+`collections.abc.Sequence` over concrete types like `list`. If you need to use a
+concrete type (for example, a `tuple` of typed elements), prefer built-in types
+like `tuple` over the parametric type aliases from the `typing` module (e.g.,
+`typing.Tuple`).
 
 ```python
-def generate_foo_scores(foo: set[str]) -> list[float]:
+from typing import List, Tuple
+
+def transform_coordinates(original: List[Tuple[float, float]]) ->
+    List[Tuple[float, float]]:
+  ...
+```
+
+```python
+from collections.abc import Sequence
+
+def transform_coordinates(original: Sequence[tuple[float, float]]) ->
+    Sequence[tuple[float, float]]:
   ...
 ```
 
@@ -3605,8 +3646,10 @@ def my_method(self, var: "some_mod.SomeType") -> None:
 <a id="generics"></a>
 #### 3.19.15 Generics 
 
-When annotating, prefer to specify type parameters for generic types; otherwise,
-[the generics' parameters will be assumed to be `Any`](https://peps.python.org/pep-0484/#the-any-type).
+When annotating, prefer to specify type parameters for
+[generic](https://docs.python.org/3/library/typing.html#generics) types in a
+parameter list; otherwise, the generics' parameters will be assumed to be
+[`Any`](https://docs.python.org/3/library/typing.html#the-any-type).
 
 ```python
 # Yes:
